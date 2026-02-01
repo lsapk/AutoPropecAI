@@ -50,7 +50,13 @@ export const EmailDashboard: React.FC<EmailDashboardProps> = ({
     }
 
     // 2. Deep Fit Analysis
-    updatedLead.deepAnalysis = await deepAnalyzeLead(updatedLead, language, businessContext);
+    const analysis = await deepAnalyzeLead(updatedLead, language, businessContext);
+    updatedLead.deepAnalysis = analysis;
+    
+    // Auto-update contact email if found by AI and not present
+    if (analysis.contactEmail && !updatedLead.email) {
+        updatedLead.email = analysis.contactEmail;
+    }
 
     // 3. Generate Initial Email
     if (!updatedLead.generatedEmail) {
@@ -116,15 +122,39 @@ export const EmailDashboard: React.FC<EmailDashboardProps> = ({
     setIsRefining(false);
   };
 
-  const handleSendEmail = async () => {
+  const handleSendViaDefaultMailClient = () => {
+    if (!selectedLead || !selectedLead.generatedEmail) return;
+
+    const subject = `Proposition pour ${selectedLead.name}`; // Simple subject
+    const body = selectedLead.generatedEmail;
+    
+    // Create mailto link
+    // Note: We strip HTML tags for mailto compatibility as it only supports plain text usually, 
+    // but some clients might handle it. For safety we usually send plain text in mailto.
+    // However, user asked for markdown/rich text. Mailto is limited. 
+    // We will try to preserve structure.
+    
+    // Simple HTML strip for safety in mailto URL params
+    const plainBody = body.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
+    
+    const mailtoLink = `mailto:${selectedLead.email || ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(plainBody)}`;
+    window.open(mailtoLink, '_blank');
+    
+    // Update status
+    const updated = { ...selectedLead, status: 'contacted' as const, lastEmailSentAt: new Date() };
+    onUpdateLeads(leads.map(l => l.id === selectedLead.id ? updated : l));
+    setSelectedLead(updated);
+  };
+
+  const handleSendGmailApi = async () => {
       if (!selectedLead || !selectedLead.generatedEmail || !gmailToken) {
           if (onConnectGmail) onConnectGmail();
           return;
       }
 
       try {
-          const subject = "Proposal for " + selectedLead.name; // Simplified subject
-          const result = await sendGmail(gmailToken, "example@test.com", subject, selectedLead.generatedEmail);
+          const subject = "Proposition pour " + selectedLead.name;
+          const result = await sendGmail(gmailToken, selectedLead.email || "example@test.com", subject, selectedLead.generatedEmail);
           
           const updated = { 
             ...selectedLead, 
@@ -134,7 +164,7 @@ export const EmailDashboard: React.FC<EmailDashboardProps> = ({
           };
           onUpdateLeads(leads.map(l => l.id === selectedLead.id ? updated : l));
           setSelectedLead(updated);
-          alert("Sent!");
+          alert("Sent via Gmail API!");
       } catch (e: any) {
           alert("Error: " + e.message);
       }
@@ -188,47 +218,81 @@ export const EmailDashboard: React.FC<EmailDashboardProps> = ({
             <div className="flex flex-col h-full">
                 
                 {/* Header */}
-                <div className="p-4 md:p-6 border-b border-white/5 bg-black/20 flex justify-between items-start">
-                    <div className="flex items-center gap-4">
-                        {/* Expand Button */}
-                        <button 
-                            onClick={() => setIsExpanded(!isExpanded)}
-                            className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-colors border border-white/5"
-                            title={isExpanded ? "Collapse View" : "Focus Mode (Expand)"}
-                        >
-                            {isExpanded ? (
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-                            ) : (
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
-                            )}
-                        </button>
+                <div className="p-4 md:p-6 border-b border-white/5 bg-black/20 flex flex-col gap-4">
+                    <div className="flex justify-between items-start">
+                        <div className="flex items-center gap-4">
+                            {/* Expand Button */}
+                            <button 
+                                onClick={() => setIsExpanded(!isExpanded)}
+                                className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-colors border border-white/5"
+                                title={isExpanded ? "Collapse View" : "Focus Mode (Expand)"}
+                            >
+                                {isExpanded ? (
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                                ) : (
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
+                                )}
+                            </button>
 
-                        <div>
-                            <h1 className="text-xl md:text-2xl font-bold text-white mb-1">{selectedLead.name}</h1>
-                            <p className="text-sm text-zinc-400 flex items-center gap-2">
-                                {selectedLead.website || "No Website"}
-                                <span className="w-1 h-1 bg-zinc-600 rounded-full"></span>
-                                {selectedLead.address}
-                            </p>
+                            <div>
+                                <h1 className="text-xl md:text-2xl font-bold text-white mb-1">{selectedLead.name}</h1>
+                                <p className="text-sm text-zinc-400 flex items-center gap-2">
+                                    {selectedLead.website || "No Website"}
+                                    <span className="w-1 h-1 bg-zinc-600 rounded-full"></span>
+                                    {selectedLead.address}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                            <Button 
+                                onClick={() => handleDeepAnalyze(selectedLead)} 
+                                isLoading={loadingLeadId === selectedLead.id}
+                                variant="secondary"
+                                className="text-xs h-9"
+                            >
+                                {selectedLead.deepAnalysis ? "Re-Analyze" : "Analyze Fit"}
+                            </Button>
                         </div>
                     </div>
-                    <div className="flex gap-2">
-                        <Button 
-                            onClick={() => handleDeepAnalyze(selectedLead)} 
-                            isLoading={loadingLeadId === selectedLead.id}
-                            variant="secondary"
-                            className="text-xs h-9"
-                        >
-                            {selectedLead.deepAnalysis ? "Re-Analyze" : "Analyze Fit"}
-                        </Button>
-                        <Button 
-                            onClick={handleSendEmail} 
-                            disabled={!selectedLead.generatedEmail}
-                            className={`text-xs h-9 border-none text-white ${gmailToken ? 'bg-blue-600 hover:bg-blue-500' : 'bg-zinc-700'}`}
-                        >
-                            {gmailToken ? "Send Email" : "Connect Gmail"}
-                        </Button>
-                    </div>
+                    
+                    {/* Email Input & Actions Bar */}
+                    {selectedLead.deepAnalysis && (
+                         <div className="flex items-center gap-3 bg-white/5 p-2 rounded-xl border border-white/5">
+                            <div className="flex-1 flex items-center gap-2 px-2">
+                                <span className="text-zinc-500 text-xs uppercase font-bold">To:</span>
+                                <input 
+                                    type="email" 
+                                    value={selectedLead.email || ''}
+                                    onChange={(e) => {
+                                        const updated = { ...selectedLead, email: e.target.value };
+                                        setSelectedLead(updated);
+                                        onUpdateLeads(leads.map(l => l.id === selectedLead.id ? updated : l));
+                                    }}
+                                    placeholder="Enter email address..."
+                                    className="bg-transparent border-none outline-none text-white text-sm flex-1 placeholder-zinc-600"
+                                />
+                            </div>
+                            <div className="flex gap-2 border-l border-white/10 pl-2">
+                                <button 
+                                    onClick={handleSendViaDefaultMailClient}
+                                    disabled={!selectedLead.generatedEmail}
+                                    className="flex items-center gap-2 bg-white text-black px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-zinc-200 transition-colors"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                                    Open Mail App
+                                </button>
+                                
+                                <button 
+                                    onClick={handleSendGmailApi}
+                                    disabled={!selectedLead.generatedEmail}
+                                    className={`p-1.5 rounded-lg border text-xs font-medium transition-colors ${gmailToken ? 'bg-blue-600/10 text-blue-400 border-blue-500/20 hover:bg-blue-600/20' : 'bg-zinc-800 text-zinc-500 border-zinc-700'}`}
+                                    title="Send via Gmail API (requires connection)"
+                                >
+                                   Gmail API
+                                </button>
+                            </div>
+                         </div>
+                    )}
                 </div>
 
                 {/* Content Area */}

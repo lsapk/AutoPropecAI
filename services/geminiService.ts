@@ -142,7 +142,7 @@ export const findLeadsOnMaps = async (
   }
 };
 
-// 3. SIMPLIFIED DEEP ANALYSIS (Fit & Score)
+// 3. SIMPLIFIED DEEP ANALYSIS (Fit & Score & Email Discovery)
 export const deepAnalyzeLead = async (
   lead: Lead,
   language: Language,
@@ -159,6 +159,7 @@ export const deepAnalyzeLead = async (
     2. Score 0-100 on how good a client they would be for me.
     3. Explain WHY they are a good client (Fit Reasoning).
     4. Detect tech stack.
+    5. **CRITICAL**: Find a contact email address (public info@, contact@, or a specific person's email if found on web).
     
     Language: ${langName}. NO BOLD SYNTAX.
     `;
@@ -177,7 +178,8 @@ export const deepAnalyzeLead = async (
             keyPainPoints: { type: Type.ARRAY, items: { type: Type.STRING } },
             techStack: { type: Type.ARRAY, items: { type: Type.STRING } },
             verificationStatus: { type: Type.STRING, enum: ['Verified Active', 'Uncertain', 'Likely Closed'] },
-            decisionMaker: { type: Type.STRING }
+            decisionMaker: { type: Type.STRING },
+            contactEmail: { type: Type.STRING, description: "The discovered email address or empty string." }
           }
         }
       }
@@ -197,7 +199,6 @@ export const deepAnalyzeLead = async (
 
 // 4. WEB AUDIT (Simplified)
 export const analyzeWebsite = async (url: string, language: Language): Promise<AuditReport> => {
-  // Keeping existing logic but simplified error handling
   try {
     const langName = getLangName(language);
     const prompt = `Audit: ${url}. SEO, Design. Language: ${langName}. Output JSON.`;

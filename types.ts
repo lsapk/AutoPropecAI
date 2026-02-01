@@ -22,6 +22,7 @@ export interface DeepAnalysis {
   keyPainPoints: string[];
   techStack: string[];
   decisionMaker?: string;
+  contactEmail?: string; // Email found by AI
   verificationStatus?: 'Verified Active' | 'Uncertain' | 'Likely Closed';
 }
 
@@ -40,6 +41,7 @@ export interface Lead {
   rating?: number;
   website?: string;
   phone?: string;
+  email?: string; // The active contact email
   businessType?: string;
   openingHours?: string;
   status: 'new' | 'analyzed' | 'contacted' | 'converted';
