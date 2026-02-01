@@ -8,7 +8,8 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     define: {
       // Polyfill process.env for the Google GenAI SDK usage in the existing code
-      'process.env.API_KEY': JSON.stringify(env.API_KEY)
+      // Fallback to empty string to prevent app crash if variable is missing
+      'process.env.API_KEY': JSON.stringify(env.API_KEY || "")
     },
     server: {
       port: 3000
