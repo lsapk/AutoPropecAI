@@ -1,7 +1,19 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { Lead, AuditReport, Language, DeepAnalysis, Message } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Vite replaces process.env.API_KEY with the actual string during build.
+const apiKey = process.env.API_KEY;
+
+// Safety Check: Alert the user if the key is missing in Production (Render)
+if (!apiKey && typeof window !== 'undefined') {
+  console.error("CRITICAL ERROR: API_KEY is missing.");
+  // Use a slight delay to ensure the UI is loaded before alerting
+  setTimeout(() => {
+    alert("⚠️ CONFIGURATION ERROR: API_KEY is missing.\n\nPlease check your Render Dashboard > Environment Variables.\nEnsure 'API_KEY' is set, then Trigger a Manual Deploy (Clear Cache).");
+  }, 2000);
+}
+
+const ai = new GoogleGenAI({ apiKey: apiKey || "missing_key_placeholder" });
 
 const getLangName = (l: Language) => l === 'fr' ? 'Français' : l === 'es' ? 'Español' : 'English';
 
@@ -72,7 +84,8 @@ export const sendAssistantMessage = async (
 
     return response.text || "Error.";
   } catch (error) {
-    return "System overloaded. Try again.";
+    console.error("Gemini Assistant Error:", error);
+    return "System overloaded or API Key invalid. Please check settings.";
   }
 };
 
