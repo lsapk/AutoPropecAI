@@ -99,7 +99,7 @@ export const EmailDashboard: React.FC<EmailDashboardProps> = ({
     
     // Call AI
     const newEmail = await refineEmailWithAI(
-        updatedLead.generatedEmail, 
+        updatedLead.generatedEmail || "", 
         instruction, 
         businessContext, 
         updatedLead,

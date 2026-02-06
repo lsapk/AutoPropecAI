@@ -96,7 +96,7 @@ export const findLeadsOnMaps = async (
     const response = await callGeminiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
-      config: { tools: [{ googleMaps: {} }] },
+      config: { tools: [{ googleMaps: {} } as any] },
     }));
 
     const textOutput = response.text || "";
