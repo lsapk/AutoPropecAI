@@ -34,6 +34,7 @@ export const EmailDashboard: React.FC<EmailDashboardProps> = ({
 
   // UI State
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isEmailFullscreen, setIsEmailFullscreen] = useState(false);
 
   // Scroll chat to bottom
   useEffect(() => {
@@ -127,12 +128,6 @@ export const EmailDashboard: React.FC<EmailDashboardProps> = ({
 
     const subject = `Proposition pour ${selectedLead.name}`; // Simple subject
     const body = selectedLead.generatedEmail;
-    
-    // Create mailto link
-    // Note: We strip HTML tags for mailto compatibility as it only supports plain text usually, 
-    // but some clients might handle it. For safety we usually send plain text in mailto.
-    // However, user asked for markdown/rich text. Mailto is limited. 
-    // We will try to preserve structure.
     
     // Simple HTML strip for safety in mailto URL params
     const plainBody = body.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
@@ -330,10 +325,20 @@ export const EmailDashboard: React.FC<EmailDashboardProps> = ({
                         {/* 2. EMAIL EDITOR + CHAT */}
                         <div className="flex-1 flex flex-col md:flex-row gap-0 min-h-0">
                             {/* Editor */}
-                            <div className="flex-1 p-6 flex flex-col bg-white text-black relative">
-                                <span className="absolute top-2 right-2 text-[10px] text-gray-400 uppercase font-bold tracking-widest">Email Draft</span>
+                            <div className="flex-1 p-6 flex flex-col bg-white text-black relative group">
+                                <div className="absolute top-2 right-2 flex items-center gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
+                                    <span className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">Email Draft</span>
+                                    <button 
+                                        onClick={() => setIsEmailFullscreen(true)}
+                                        className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-blue-500 transition-colors"
+                                        title="Fullscreen Mode"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
+                                    </button>
+                                </div>
                                 <textarea 
-                                    className="w-full h-full resize-none outline-none bg-transparent text-base md:text-lg leading-relaxed p-2 font-serif"
+                                    className="w-full h-full resize-none outline-none bg-transparent text-base md:text-lg leading-relaxed p-2 font-serif placeholder-gray-300"
+                                    placeholder="Generating email..."
                                     value={selectedLead.generatedEmail || ""}
                                     onChange={(e) => {
                                         const updated = { ...selectedLead, generatedEmail: e.target.value };
@@ -376,7 +381,7 @@ export const EmailDashboard: React.FC<EmailDashboardProps> = ({
                                             disabled={isRefining}
                                             className="absolute right-2 top-2 p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
                                         >
-                                            <svg className={`w-5 h-5 ${isRefining ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
+                                            <svg className={`w-5 h-5 ${isRefining ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 10l7-7m0 0l7 7-7-7v18"></path></svg>
                                         </button>
                                     </div>
                                 </div>
@@ -388,6 +393,42 @@ export const EmailDashboard: React.FC<EmailDashboardProps> = ({
         ) : (
             <div className="flex-1 flex items-center justify-center text-zinc-600">
                 <p>Select a prospect from the list</p>
+            </div>
+        )}
+
+        {/* Fullscreen Email Modal */}
+        {isEmailFullscreen && selectedLead && (
+            <div className="fixed inset-0 z-[200] bg-white text-black flex flex-col animate-in fade-in zoom-in-95 duration-200">
+                <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100 bg-gray-50/50 backdrop-blur-sm">
+                    <div className="flex items-center gap-4">
+                         <h2 className="text-xl font-bold text-gray-800">{selectedLead.name}</h2>
+                         <span className="text-xs text-gray-400 uppercase tracking-widest font-semibold border-l pl-4 border-gray-300">Editing Email</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <button 
+                            onClick={() => setIsEmailFullscreen(false)}
+                            className="px-4 py-2 bg-black text-white rounded-full text-sm font-medium hover:bg-gray-800 transition-colors flex items-center gap-2 shadow-lg"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                            Done
+                        </button>
+                    </div>
+                </div>
+                <div className="flex-1 overflow-hidden relative">
+                    <div className="max-w-4xl mx-auto h-full p-8 md:p-12">
+                         <textarea 
+                            className="w-full h-full resize-none outline-none bg-transparent text-xl md:text-2xl leading-relaxed font-serif text-gray-800 placeholder-gray-300"
+                            autoFocus
+                            placeholder="Write your email here..."
+                            value={selectedLead.generatedEmail || ""}
+                            onChange={(e) => {
+                                const updated = { ...selectedLead, generatedEmail: e.target.value };
+                                setSelectedLead(updated);
+                                onUpdateLeads(leads.map(l => l.id === selectedLead.id ? updated : l));
+                            }}
+                        />
+                    </div>
+                </div>
             </div>
         )}
       </div>
