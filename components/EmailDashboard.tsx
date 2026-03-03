@@ -13,6 +13,7 @@ interface EmailDashboardProps {
   onUpdateLeads: (leads: Lead[]) => void;
   gmailToken?: string | null;
   onConnectGmail?: () => void;
+  onNotify?: (message: string, type: "success" | "error" | "info") => void;
 }
 
 export const EmailDashboard: React.FC<EmailDashboardProps> = ({ 
@@ -21,7 +22,8 @@ export const EmailDashboard: React.FC<EmailDashboardProps> = ({
     language, 
     onUpdateLeads, 
     gmailToken, 
-    onConnectGmail 
+    onConnectGmail,
+    onNotify
 }) => {
   const t = translations[language];
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -36,6 +38,8 @@ export const EmailDashboard: React.FC<EmailDashboardProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEmailFullscreen, setIsEmailFullscreen] = useState(false);
 
+  const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
   // Scroll chat to bottom
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -45,38 +49,39 @@ export const EmailDashboard: React.FC<EmailDashboardProps> = ({
     setLoadingLeadId(lead.id);
     let updatedLead = { ...lead };
 
-    // 1. Web Audit if needed
-    if (lead.website && !lead.auditReport) {
+    try {
+      if (lead.website && !lead.auditReport) {
         updatedLead.auditReport = await analyzeWebsite(lead.website, language);
-    }
+      }
 
-    // 2. Deep Fit Analysis
-    const analysis = await deepAnalyzeLead(updatedLead, language, businessContext);
-    updatedLead.deepAnalysis = analysis;
-    
-    // Auto-update contact email if found by AI and not present
-    if (analysis.contactEmail && !updatedLead.email) {
+      const analysis = await deepAnalyzeLead(updatedLead, language, businessContext);
+      updatedLead.deepAnalysis = analysis;
+
+      if (analysis.contactEmail && !updatedLead.email) {
         updatedLead.email = analysis.contactEmail;
-    }
+      }
 
-    // 3. Generate Initial Email
-    if (!updatedLead.generatedEmail) {
+      if (!updatedLead.generatedEmail) {
         updatedLead.generatedEmail = await generateInitialEmail(businessContext, updatedLead, language);
         updatedLead.emailRefinementHistory = [{
-            id: 'init',
-            role: 'model',
-            text: updatedLead.generatedEmail,
-            timestamp: new Date()
+          id: 'init',
+          role: 'model',
+          text: updatedLead.generatedEmail,
+          timestamp: new Date(),
         }];
-    }
+      }
 
-    updatedLead.status = 'analyzed';
-    
-    // Update State
-    const newLeads = leads.map(l => l.id === lead.id ? updatedLead : l);
-    onUpdateLeads(newLeads);
-    setSelectedLead(updatedLead);
-    setLoadingLeadId(null);
+      updatedLead.status = 'analyzed';
+
+      const newLeads = leads.map((l) => (l.id === lead.id ? updatedLead : l));
+      onUpdateLeads(newLeads);
+      setSelectedLead(updatedLead);
+    } catch (e) {
+      console.error(e);
+      onNotify?.(`${t.errorPrefix} analysis failed.`, 'error');
+    } finally {
+      setLoadingLeadId(null);
+    }
   };
 
   const handleRefineEmail = async () => {
@@ -86,47 +91,54 @@ export const EmailDashboard: React.FC<EmailDashboardProps> = ({
     const instruction = refineInput;
     setRefineInput('');
 
-    // Add User Instruction to History
     const userMsg: Message = {
-        id: Date.now().toString(),
-        role: 'user',
-        text: instruction,
-        timestamp: new Date()
+      id: Date.now().toString(),
+      role: 'user',
+      text: instruction,
+      timestamp: new Date(),
     };
-    
+
     const newHistory = [...(selectedLead.emailRefinementHistory || []), userMsg];
     let updatedLead = { ...selectedLead, emailRefinementHistory: newHistory };
-    
-    // Call AI
-    const newEmail = await refineEmailWithAI(
-        updatedLead.generatedEmail || "", 
-        instruction, 
-        businessContext, 
-        updatedLead,
-        newHistory
-    );
 
-    const modelMsg: Message = {
+    try {
+      const newEmail = await refineEmailWithAI(
+        updatedLead.generatedEmail || '',
+        instruction,
+        businessContext,
+        updatedLead,
+        newHistory,
+      );
+
+      const modelMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: 'model',
-        text: newEmail, // This is just for history tracking, the actual email field updates too
-        timestamp: new Date()
-    };
+        text: newEmail,
+        timestamp: new Date(),
+      };
 
-    updatedLead.emailRefinementHistory = [...newHistory, modelMsg];
-    updatedLead.generatedEmail = newEmail;
+      updatedLead.emailRefinementHistory = [...newHistory, modelMsg];
+      updatedLead.generatedEmail = newEmail;
 
-    // Update State
-    const newLeads = leads.map(l => l.id === selectedLead.id ? updatedLead : l);
-    onUpdateLeads(newLeads);
-    setSelectedLead(updatedLead);
-    setIsRefining(false);
+      const newLeads = leads.map((l) => (l.id === selectedLead.id ? updatedLead : l));
+      onUpdateLeads(newLeads);
+      setSelectedLead(updatedLead);
+    } catch (e) {
+      console.error(e);
+      onNotify?.(`${t.errorPrefix} email refinement failed.`, 'error');
+    } finally {
+      setIsRefining(false);
+    }
   };
 
   const handleSendViaDefaultMailClient = () => {
     if (!selectedLead || !selectedLead.generatedEmail) return;
+    if (!selectedLead.email || !isValidEmail(selectedLead.email)) {
+      onNotify?.(t.invalidEmail, 'error');
+      return;
+    }
 
-    const subject = `Proposition pour ${selectedLead.name}`; // Simple subject
+    const subject = `Proposition pour ${selectedLead.name}`;
     const body = selectedLead.generatedEmail;
     
     // Simple HTML strip for safety in mailto URL params
@@ -149,7 +161,11 @@ export const EmailDashboard: React.FC<EmailDashboardProps> = ({
 
       try {
           const subject = "Proposition pour " + selectedLead.name;
-          const result = await sendGmail(gmailToken, selectedLead.email || "example@test.com", subject, selectedLead.generatedEmail);
+          if (!selectedLead.email || !isValidEmail(selectedLead.email)) {
+              onNotify?.(t.invalidEmail, "error");
+              return;
+          }
+          const result = await sendGmail(gmailToken, selectedLead.email, subject, selectedLead.generatedEmail);
           
           const updated = { 
             ...selectedLead, 
@@ -159,9 +175,9 @@ export const EmailDashboard: React.FC<EmailDashboardProps> = ({
           };
           onUpdateLeads(leads.map(l => l.id === selectedLead.id ? updated : l));
           setSelectedLead(updated);
-          alert("Sent via Gmail API!");
+          onNotify?.(t.sentViaGmail, "success");
       } catch (e: any) {
-          alert("Error: " + e.message);
+          onNotify?.(`${t.errorPrefix} ${e.message}`, "error");
       }
   };
 
@@ -172,7 +188,7 @@ export const EmailDashboard: React.FC<EmailDashboardProps> = ({
       {!isExpanded && (
         <div className="w-1/3 flex flex-col bg-zinc-900/30 rounded-2xl border border-white/5 overflow-hidden transition-all duration-300">
             <div className="p-4 border-b border-white/5 bg-white/5 flex justify-between items-center">
-                <h2 className="text-white font-medium">Prospects ({leads.length})</h2>
+                <h2 className="text-white font-medium">{t.prospects} ({leads.length})</h2>
                 <div className={`text-xs px-2 py-1 rounded border ${gmailToken ? 'border-green-500/30 text-green-400 bg-green-500/10' : 'border-zinc-500/30 text-zinc-500'}`}>
                     {gmailToken ? 'Gmail Ready' : 'Gmail Offline'}
                 </div>
@@ -245,7 +261,7 @@ export const EmailDashboard: React.FC<EmailDashboardProps> = ({
                                 variant="secondary"
                                 className="text-xs h-9"
                             >
-                                {selectedLead.deepAnalysis ? "Re-Analyze" : "Analyze Fit"}
+                                {selectedLead.deepAnalysis ? t.reanalyze : t.analyzeFit}
                             </Button>
                         </div>
                     </div>
@@ -274,16 +290,16 @@ export const EmailDashboard: React.FC<EmailDashboardProps> = ({
                                     className="flex items-center gap-2 bg-white text-black px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-zinc-200 transition-colors"
                                 >
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-                                    Open Mail App
+                                    {t.openMailApp}
                                 </button>
                                 
                                 <button 
                                     onClick={handleSendGmailApi}
                                     disabled={!selectedLead.generatedEmail}
                                     className={`p-1.5 rounded-lg border text-xs font-medium transition-colors ${gmailToken ? 'bg-blue-600/10 text-blue-400 border-blue-500/20 hover:bg-blue-600/20' : 'bg-zinc-800 text-zinc-500 border-zinc-700'}`}
-                                    title="Send via Gmail API (requires connection)"
+                                    title={t.gmailApi}
                                 >
-                                   Gmail API
+                                   {t.gmailApi}
                                 </button>
                             </div>
                          </div>
@@ -296,7 +312,7 @@ export const EmailDashboard: React.FC<EmailDashboardProps> = ({
                         <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-4">
                             <svg className="w-8 h-8 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
                         </div>
-                        <p>Click "Analyze Fit" to start intelligence.</p>
+                        <p>{t.analyzeFit}</p>
                     </div>
                 ) : (
                     <div className="flex-1 flex flex-col overflow-hidden">

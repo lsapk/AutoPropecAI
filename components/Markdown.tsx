@@ -4,62 +4,77 @@ interface MarkdownProps {
   content: string;
 }
 
+const escapeHtml = (text: string): string =>
+  text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const parseInlineToSafeHtml = (text: string): string => {
+  const escaped = escapeHtml(text);
+  return escaped
+    .replace(/\*\*(.*?)\*\*/g, '<strong class="text-white font-semibold">$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em class="text-zinc-300">$1</em>')
+    .replace(/`(.*?)`/g, '<code class="bg-white/10 px-1 rounded text-xs font-mono">$1</code>')
+    .replace(/\n/g, '<br/>');
+};
+
+const renderListItems = (lines: string[]) =>
+  lines.map((line, i) => {
+    const clean = line.replace(/^[-*]\s+/, '').replace(/^\d+\.\s+/, '');
+    return <li key={`${line}-${i}`} dangerouslySetInnerHTML={{ __html: parseInlineToSafeHtml(clean) }} />;
+  });
+
 export const Markdown: React.FC<MarkdownProps> = ({ content }) => {
   if (!content) return null;
 
-  // Split by double newlines for paragraphs
   const paragraphs = content.split('\n\n');
 
   return (
     <div className="space-y-3 text-sm leading-relaxed">
       {paragraphs.map((paragraph, pIndex) => {
-        // Handle Lists
-        if (paragraph.startsWith('- ') || paragraph.startsWith('* ')) {
-          const items = paragraph.split(/\n[-*] /).filter(Boolean);
+        const lines = paragraph.split('\n').filter(Boolean);
+
+        if (lines.every((line) => /^[-*]\s+/.test(line))) {
           return (
-            <ul key={pIndex} className="list-disc pl-5 space-y-1">
-              {items.map((item, i) => (
-                <li key={i} dangerouslySetInnerHTML={{ __html: parseInline(item) }} />
-              ))}
+            <ul key={`ul-${pIndex}`} className="list-disc pl-5 space-y-1">
+              {renderListItems(lines)}
             </ul>
           );
         }
-        
-        // Handle Numbered Lists
-        if (/^\d+\. /.test(paragraph)) {
-           const items = paragraph.split(/\n\d+\. /).filter(Boolean);
-           return (
-            <ol key={pIndex} className="list-decimal pl-5 space-y-1">
-              {items.map((item, i) => (
-                <li key={i} dangerouslySetInnerHTML={{ __html: parseInline(item) }} />
-              ))}
+
+        if (lines.every((line) => /^\d+\.\s+/.test(line))) {
+          return (
+            <ol key={`ol-${pIndex}`} className="list-decimal pl-5 space-y-1">
+              {renderListItems(lines)}
             </ol>
-           );
+          );
         }
 
-        // Handle Headers
         if (paragraph.startsWith('### ')) {
-          return <h3 key={pIndex} className="font-semibold text-white mt-4" dangerouslySetInnerHTML={{ __html: parseInline(paragraph.replace('### ', '')) }} />;
-        }
-        if (paragraph.startsWith('## ')) {
-          return <h2 key={pIndex} className="text-lg font-bold text-white mt-5 border-b border-white/10 pb-1" dangerouslySetInnerHTML={{ __html: parseInline(paragraph.replace('## ', '')) }} />;
+          return (
+            <h3
+              key={`h3-${pIndex}`}
+              className="font-semibold text-white mt-4"
+              dangerouslySetInnerHTML={{ __html: parseInlineToSafeHtml(paragraph.replace('### ', '')) }}
+            />
+          );
         }
 
-        // Standard Paragraph
-        return (
-          <p key={pIndex} dangerouslySetInnerHTML={{ __html: parseInline(paragraph) }} />
-        );
+        if (paragraph.startsWith('## ')) {
+          return (
+            <h2
+              key={`h2-${pIndex}`}
+              className="text-lg font-bold text-white mt-5 border-b border-white/10 pb-1"
+              dangerouslySetInnerHTML={{ __html: parseInlineToSafeHtml(paragraph.replace('## ', '')) }}
+            />
+          );
+        }
+
+        return <p key={`p-${pIndex}`} dangerouslySetInnerHTML={{ __html: parseInlineToSafeHtml(paragraph) }} />;
       })}
     </div>
   );
 };
-
-// Simple helper to parse bold and italic
-function parseInline(text: string): string {
-  let parsed = text
-    .replace(/\*\*(.*?)\*\*/g, '<strong class="text-white font-semibold">$1</strong>') // Bold
-    .replace(/\*(.*?)\*/g, '<em class="text-zinc-300">$1</em>') // Italic
-    .replace(/`(.*?)`/g, '<code class="bg-white/10 px-1 rounded text-xs font-mono">$1</code>') // Code
-    .replace(/\n/g, '<br/>'); // Line breaks within paragraphs
-  return parsed;
-}

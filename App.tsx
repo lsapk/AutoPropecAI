@@ -6,11 +6,12 @@ import { GlobalAssistant } from './components/GlobalAssistant';
 import { AppStep, Lead, Language, Project } from './types';
 import { translations } from './translations';
 import { Button } from './components/Button';
+import { Toast } from './components/Toast';
 
 // ------------------------------------------------------------------
 // CONFIGURATION GOOGLE CLOUD
 // ------------------------------------------------------------------
-const GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID"; // <--- COLLEZ VOTRE ID ICI
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ""
 // ------------------------------------------------------------------
 
 function App() {
@@ -33,6 +34,7 @@ function App() {
   // Gmail State
   const [gmailToken, setGmailToken] = useState<string | null>(null);
   const [tokenClient, setTokenClient] = useState<any>(null);
+  const [toast, setToast] = useState<{message: string; type: 'success' | 'error' | 'info'} | null>(null);
 
   const t = translations[language];
 
@@ -75,7 +77,7 @@ function App() {
 
   // Init Google Identity
   useEffect(() => {
-    if (window.google && GOOGLE_CLIENT_ID && GOOGLE_CLIENT_ID !== "YOUR_GOOGLE_CLIENT_ID") {
+    if (window.google && GOOGLE_CLIENT_ID) {
         try {
             const client = window.google.accounts.oauth2.initTokenClient({
                 client_id: GOOGLE_CLIENT_ID,
@@ -172,7 +174,7 @@ function App() {
       if (tokenClient) {
           tokenClient.requestAccessToken();
       } else {
-          alert("Erreur de configuration: GOOGLE_CLIENT_ID manquant dans App.tsx");
+          setToast({ message: t.configErrorClientId, type: "error" });
       }
   };
 
@@ -220,7 +222,7 @@ function App() {
                                     </div>
                                 ) : (
                                     <span className="inline-block px-4 py-2 rounded-full text-xs font-medium bg-white/10 text-zinc-400 group-hover:bg-white/20 transition-colors">
-                                        Browse Files
+                                        {t.browseFiles}
                                     </span>
                                 )}
                             </div>
@@ -238,28 +240,28 @@ function App() {
                     </div>
 
                     <div className="flex flex-col md:flex-row gap-8 justify-center items-stretch mb-16 px-4">
-                        <div onClick={() => setCurrentStep(AppStep.DISCOVERY)} className={`group w-full md:w-80 p-8 backdrop-blur-xl border rounded-3xl cursor-pointer transition-all duration-300 shadow-2xl relative overflow-hidden ${isDarkMode ? 'bg-zinc-900/40 border-white/5 hover:border-blue-500/30' : 'bg-white border-zinc-200 hover:border-blue-500/30 shadow-zinc-200'}`}>
+                        <button type="button" onClick={() => setCurrentStep(AppStep.DISCOVERY)} className={`text-left group w-full md:w-80 p-8 backdrop-blur-xl border rounded-3xl cursor-pointer transition-all duration-300 shadow-2xl relative overflow-hidden ${isDarkMode ? 'bg-zinc-900/40 border-white/5 hover:border-blue-500/30' : 'bg-white border-zinc-200 hover:border-blue-500/30 shadow-zinc-200'}`}>
                             <h3 className={`text-2xl font-medium mb-2 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{t.modeMapsTitle}</h3>
                             <p className="text-zinc-500 text-sm leading-relaxed border-t border-zinc-500/10 pt-4 mt-2">{t.modeMapsDesc}</p>
-                        </div>
+                        </button>
 
-                        <div onClick={() => setCurrentStep(AppStep.WEB_AUDIT)} className={`group w-full md:w-80 p-8 backdrop-blur-xl border rounded-3xl cursor-pointer transition-all duration-300 shadow-2xl relative overflow-hidden ${isDarkMode ? 'bg-zinc-900/40 border-white/5 hover:border-purple-500/30' : 'bg-white border-zinc-200 hover:border-purple-500/30 shadow-zinc-200'}`}>
+                        <button type="button" onClick={() => setCurrentStep(AppStep.WEB_AUDIT)} className={`group w-full md:w-80 p-8 backdrop-blur-xl border rounded-3xl cursor-pointer transition-all duration-300 shadow-2xl relative overflow-hidden ${isDarkMode ? 'bg-zinc-900/40 border-white/5 hover:border-purple-500/30' : 'bg-white border-zinc-200 hover:border-purple-500/30 shadow-zinc-200'}`}>
                             <h3 className={`text-2xl font-medium mb-2 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{t.modeAuditTitle}</h3>
                             <p className="text-zinc-500 text-sm leading-relaxed border-t border-zinc-500/10 pt-4 mt-2">{t.modeAuditDesc}</p>
-                        </div>
+                        </button>
                     </div>
                 </div>
 
                 <div className={`p-6 rounded-t-3xl border-t border-x mx-4 lg:mx-auto max-w-7xl ${isDarkMode ? 'bg-zinc-900/80 border-white/10' : 'bg-white border-zinc-200'}`}>
                     <h3 className={`text-sm font-semibold uppercase tracking-wider mb-4 ${isDarkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                        Recent Projects ({projects.length})
+                        {t.recentProjects} ({projects.length})
                     </h3>
                     <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
                         {projects.map(p => (
-                            <div key={p.id} onClick={() => loadProject(p)} className={`min-w-[200px] p-4 rounded-xl cursor-pointer border hover:scale-105 transition-transform ${isDarkMode ? 'bg-black/40 border-white/10 hover:border-white/30' : 'bg-slate-50 border-zinc-200 hover:border-zinc-300'}`}>
+                            <button type="button" key={p.id} onClick={() => loadProject(p)} className={`text-left min-w-[200px] p-4 rounded-xl cursor-pointer border hover:scale-105 transition-transform ${isDarkMode ? 'bg-black/40 border-white/10 hover:border-white/30' : 'bg-slate-50 border-zinc-200 hover:border-zinc-300'}`}>
                                 <h4 className={`font-medium truncate ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{p.name}</h4>
                                 <p className="text-xs text-zinc-500 mt-1">{new Date(p.date).toLocaleDateString()} • {p.leads.length} Leads</p>
-                            </div>
+                            </button>
                         ))}
                     </div>
                 </div>
@@ -270,7 +272,7 @@ function App() {
         return <LeadFinder onLeadsFound={handleLeadsFound} language={language} businessContext={businessDescription} />;
       
       case AppStep.WEB_AUDIT:
-        return <WebAnalyzer onAuditComplete={handleLeadsFound} language={language} />;
+        return <WebAnalyzer onAuditComplete={handleLeadsFound} language={language} onNotify={(message, type) => setToast({ message, type })} />;
 
       case AppStep.OUTREACH:
         return (
@@ -281,6 +283,7 @@ function App() {
                 onUpdateLeads={handleUpdateLeads} 
                 gmailToken={gmailToken}
                 onConnectGmail={handleConnectGmail}
+                onNotify={(message, type) => setToast({ message, type })}
             />
         );
       
@@ -360,6 +363,7 @@ function App() {
             currentContext={businessDescription}
           />
       </div>
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );
 }
