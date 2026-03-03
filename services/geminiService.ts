@@ -7,15 +7,44 @@ const apiKey = process.env.API_KEY;
 // Safety Check: Alert the user if the key is missing in Production (Render)
 if (!apiKey && typeof window !== 'undefined') {
   console.error("CRITICAL ERROR: API_KEY is missing.");
-  // Use a slight delay to ensure the UI is loaded before alerting
-  setTimeout(() => {
-    alert("⚠️ CONFIGURATION ERROR: API_KEY is missing.\n\nPlease check your Render Dashboard > Environment Variables.\nEnsure 'API_KEY' is set, then Trigger a Manual Deploy (Clear Cache).");
-  }, 2000);
+  console.warn("Configuration error: API_KEY is missing. Check environment variables.");
 }
 
 const ai = new GoogleGenAI({ apiKey: apiKey || "missing_key_placeholder" });
 
 const getLangName = (l: Language) => l === 'fr' ? 'Français' : l === 'es' ? 'Español' : 'English';
+
+
+const extractJsonArrayFromText = (text: string): any[] => {
+  try {
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    const start = text.indexOf('[');
+    const end = text.lastIndexOf(']');
+    if (start === -1 || end === -1 || end <= start) return [];
+    try {
+      const sliced = text.slice(start, end + 1);
+      const parsed = JSON.parse(sliced);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+};
+
+const normalizeLeadWebsite = (website?: string): string | undefined => {
+  if (!website) return undefined;
+  const raw = website.trim();
+  if (!raw) return undefined;
+  try {
+    const withProtocol = raw.startsWith('http') ? raw : `https://${raw}`;
+    return new URL(withProtocol).toString();
+  } catch {
+    return raw;
+  }
+};
+
 
 // Helper for exponential backoff retry
 const callGeminiWithRetry = async <T>(
@@ -104,50 +133,48 @@ export const findLeadsOnMaps = async (
     Context: "${contextStrategy}"
     Return 5-8 high-quality leads.
     Language: ${langName}.
+
+    Return STRICT JSON array only.
     `;
 
     const response = await callGeminiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
-      config: { tools: [{ googleMaps: {} } as any] },
-    }));
-
-    const textOutput = response.text || "";
-    
-    const extractionResponse = await callGeminiWithRetry<GenerateContentResponse>(() => ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Extract leads to JSON. Text: "${textOutput}". Schema: name, address, website, businessType, notes (summary).`,
       config: {
+        tools: [{ googleMaps: {} } as any],
         responseMimeType: "application/json",
         responseSchema: {
-            type: Type.ARRAY,
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    name: { type: Type.STRING },
-                    address: { type: Type.STRING },
-                    rating: { type: Type.NUMBER },
-                    website: { type: Type.STRING },
-                    phone: { type: Type.STRING },
-                    businessType: { type: Type.STRING },
-                    notes: { type: Type.STRING }
-                }
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              name: { type: Type.STRING },
+              address: { type: Type.STRING },
+              rating: { type: Type.NUMBER },
+              website: { type: Type.STRING },
+              phone: { type: Type.STRING },
+              businessType: { type: Type.STRING },
+              notes: { type: Type.STRING }
             }
+          }
         }
-      }
+      },
     }));
 
-    const parsedLeads = JSON.parse(extractionResponse.text || "[]");
-    return parsedLeads.map((l: any, i: number) => ({
-      id: `lead-${Date.now()}-${i}`,
-      name: l.name,
-      address: l.address,
-      website: l.website,
-      phone: l.phone,
-      businessType: l.businessType,
-      status: 'new',
-      notes: l.notes, 
-    }));
+    const parsedLeads = extractJsonArrayFromText(response.text || "[]");
+
+    return parsedLeads
+      .filter((l: any) => l && typeof l.name === 'string' && l.name.trim().length > 0)
+      .map((l: any, i: number) => ({
+        id: `lead-${Date.now()}-${i}`,
+        name: l.name?.trim() || 'Unknown Lead',
+        address: l.address?.trim() || 'N/A',
+        website: normalizeLeadWebsite(l.website),
+        phone: l.phone?.trim() || undefined,
+        businessType: l.businessType?.trim() || undefined,
+        status: 'new',
+        notes: l.notes?.trim() || undefined,
+      }));
 
   } catch (error) {
     console.error("Error finding leads:", error);
