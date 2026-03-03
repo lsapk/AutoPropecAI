@@ -7,10 +7,7 @@ const apiKey = process.env.API_KEY;
 // Safety Check: Alert the user if the key is missing in Production (Render)
 if (!apiKey && typeof window !== 'undefined') {
   console.error("CRITICAL ERROR: API_KEY is missing.");
-  // Use a slight delay to ensure the UI is loaded before alerting
-  setTimeout(() => {
-    alert("⚠️ CONFIGURATION ERROR: API_KEY is missing.\n\nPlease check your Render Dashboard > Environment Variables.\nEnsure 'API_KEY' is set, then Trigger a Manual Deploy (Clear Cache).");
-  }, 2000);
+  console.warn("Configuration error: API_KEY is missing. Check environment variables.");
 }
 
 const ai = new GoogleGenAI({ apiKey: apiKey || "missing_key_placeholder" });
